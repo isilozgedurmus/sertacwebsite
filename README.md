@@ -6,7 +6,9 @@ Telefon ve tablet için Türkçe arayüzlü kişisel İngilizce kelime defteri. 
 
 `.github/workflows/ci.yml`, `main` dalına gönderilen değişikliklerde, pull request'lerde ve elle başlatıldığında Node.js 24 ile kilitli bağımlılıkları kurar, uygulamayı derler ve regresyon testlerini çalıştırır. Başarılı derleme çıktısı yedi gün boyunca Actions artifact'i olarak saklanır. Resmî Actions eylemleri tam commit kimliğiyle sabitlenmiştir; iş akışının depo erişimi yalnız okumadır.
 
-Bu iş akışı mevcut Sites Worker çıktısını doğrular. Hostinger'a yayın adımı henüz bağlı değildir: uygulamanın D1 veritabanı ve Sites oturum kimliği Hostinger'da kendiliğinden bulunmaz. Hostinger paketinin çalışma ortamı ve sunucu erişimi doğrulanmadan yalnız `web/` dosyalarını yayımlamak cihazlar arası eşitlemeyi sağlamaz. Canlı yayında yerel önizlemenin sabit test kimliği kullanılmamalıdır.
+Bu iş akışı mevcut Sites Worker çıktısını doğrular. AWS Lambda yayın uyarlaması için [aws/README.md](aws/README.md) ve `.github/workflows/aws-deploy.yml` kullanılır. AWS hesabı/OIDC ayarı ve gerçek deployment doğrulaması ayrıca gereklidir.
+
+Hostinger'a yayın adımı bağlı değildir: uygulamanın D1 veritabanı ve Sites oturum kimliği Hostinger'da kendiliğinden bulunmaz. Hostinger paketinin çalışma ortamı ve sunucu erişimi doğrulanmadan yalnız `web/` dosyalarını yayımlamak cihazlar arası eşitlemeyi sağlamaz. Canlı yayında yerel önizlemenin sabit test kimliği kullanılmamalıdır.
 
 ## Yerel önizleme
 

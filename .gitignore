@@ -6,3 +6,6 @@ node_modules/
 !.env.example
 .DS_Store
 dist/
+.aws-build/
+.aws-output/
+.aws/

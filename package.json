@@ -6,10 +6,16 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "db:generate": "drizzle-kit generate",
-    "test": "node tests/lookup.test.cjs && node tests/sync.test.cjs && node tests/worker.test.mjs && node tests/artifact.test.mjs"
+    "test": "node tests/lookup.test.cjs && node tests/sync.test.cjs && node tests/worker.test.mjs && node tests/artifact.test.mjs",
+    "build:aws": "node scripts/build-aws.mjs",
+    "test:aws": "node tests/aws.test.mjs"
   },
   "devDependencies": {
     "drizzle-kit": "0.31.10",
     "drizzle-orm": "0.45.2"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1153.0",
+    "@aws-sdk/client-secrets-manager": "3.1153.0"
   }
 }

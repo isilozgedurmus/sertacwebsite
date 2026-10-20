@@ -1,0 +1,66 @@
+name: Deploy to AWS Lambda
+
+on:
+  workflow_run:
+    workflows: [Build and test]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      vars.AWS_ROLE_ARN != '' && vars.AWS_ARTIFACT_BUCKET != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_STACK_NAME: ${{ vars.AWS_STACK_NAME || 'kelime-personal' }}
+      AWS_ARTIFACT_BUCKET: ${{ vars.AWS_ARTIFACT_BUCKET }}
+      AWS_LOGIN_NAME: ${{ vars.AWS_LOGIN_NAME || 'sertac' }}
+      AWS_DOMAIN_NAME: ${{ vars.AWS_DOMAIN_NAME }}
+      AWS_CERTIFICATE_ARN: ${{ vars.AWS_CERTIFICATE_ARN }}
+    steps:
+      - name: Check out the verified source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Build and test before AWS access
+        run: |
+          npm ci
+          npm run build:aws
+          npm test
+          npm run test:aws
+      - name: Get temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: kelime-github-deploy
+      - name: Validate and package CloudFormation
+        run: |
+          mkdir -p .aws-output
+          aws cloudformation package --template-file aws/template.json --s3-bucket "$AWS_ARTIFACT_BUCKET" --s3-prefix "$AWS_STACK_NAME" --output-template-file .aws-output/packaged.json
+          aws cloudformation validate-template --template-body file://.aws-output/packaged.json > /dev/null
+      - name: Deploy application
+        run: |
+          aws cloudformation deploy --template-file .aws-output/packaged.json --stack-name "$AWS_STACK_NAME" --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset --parameter-overrides "LoginName=$AWS_LOGIN_NAME" "DomainName=$AWS_DOMAIN_NAME" "CertificateArn=$AWS_CERTIFICATE_ARN"
+          aws cloudformation describe-stacks --stack-name "$AWS_STACK_NAME" --query 'Stacks[0].Outputs' --output json

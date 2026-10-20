@@ -1,0 +1,83 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Private Kelime notebook: Lambda, protected HTTPS URL, versioned S3 storage; optional custom domain.",
+  "Parameters": {
+    "LoginName": { "Type": "String", "Default": "sertac", "AllowedPattern": "[a-zA-Z0-9._-]{3,40}" },
+    "DomainName": { "Type": "String", "Default": "", "AllowedPattern": "^$|^[a-z0-9][a-z0-9.-]+\\.[a-z]{2,}$" },
+    "CertificateArn": { "Type": "String", "Default": "", "Description": "For a custom domain: an issued ACM certificate in us-east-1 covering DomainName." }
+  },
+  "Rules": {
+    "CustomDomainNeedsCertificate": {
+      "Assertions": [{ "Assert": { "Fn::Or": [{ "Fn::Equals": [{ "Ref": "DomainName" }, ""] }, { "Fn::Not": [{ "Fn::Equals": [{ "Ref": "CertificateArn" }, ""] }] }] }, "AssertDescription": "A custom domain requires its us-east-1 ACM certificate ARN." }]
+    }
+  },
+  "Conditions": { "HasDomain": { "Fn::Not": [{ "Fn::Equals": [{ "Ref": "DomainName" }, ""] }] } },
+  "Resources": {
+    "NotebookBucket": {
+      "Type": "AWS::S3::Bucket", "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "PublicAccessBlockConfiguration": { "BlockPublicAcls": true, "IgnorePublicAcls": true, "BlockPublicPolicy": true, "RestrictPublicBuckets": true },
+        "BucketEncryption": { "ServerSideEncryptionConfiguration": [{ "ServerSideEncryptionByDefault": { "SSEAlgorithm": "AES256" } }] },
+        "VersioningConfiguration": { "Status": "Enabled" },
+        "LifecycleConfiguration": { "Rules": [{ "Id": "PreviousVersions", "Status": "Enabled", "NoncurrentVersionExpiration": { "NoncurrentDays": 30 } }] }
+      }
+    },
+    "NotebookBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": { "Bucket": { "Ref": "NotebookBucket" }, "PolicyDocument": { "Version": "2012-10-17", "Statement": [{ "Effect": "Deny", "Principal": "*", "Action": "s3:*", "Resource": [{ "Fn::GetAtt": ["NotebookBucket", "Arn"] }, { "Fn::Sub": "${NotebookBucket.Arn}/*" }], "Condition": { "Bool": { "aws:SecureTransport": "false" } } }] } }
+    },
+    "LoginSecret": {
+      "Type": "AWS::SecretsManager::Secret", "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain",
+      "Properties": { "Description": "Kelime personal application login; retrieve only in your AWS console.", "GenerateSecretString": { "SecretStringTemplate": { "Fn::Sub": "{\"username\":\"${LoginName}\"}" }, "GenerateStringKey": "password", "PasswordLength": 32, "ExcludePunctuation": true } }
+    },
+    "FunctionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": { "Version": "2012-10-17", "Statement": [{ "Effect": "Allow", "Principal": { "Service": "lambda.amazonaws.com" }, "Action": "sts:AssumeRole" }] },
+        "Policies": [{ "PolicyName": "PersonalNotebook", "PolicyDocument": { "Version": "2012-10-17", "Statement": [
+          { "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject"], "Resource": { "Fn::Sub": "${NotebookBucket.Arn}/owner/notebook.json" } },
+          { "Effect": "Allow", "Action": "s3:ListBucket", "Resource": { "Fn::GetAtt": ["NotebookBucket", "Arn"] } },
+          { "Effect": "Allow", "Action": "secretsmanager:GetSecretValue", "Resource": { "Ref": "LoginSecret" } },
+          { "Effect": "Allow", "Action": ["logs:CreateLogStream", "logs:PutLogEvents"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-app:*" } }
+        ] } }]
+      }
+    },
+    "Application": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "FunctionName": { "Fn::Sub": "${AWS::StackName}-app" }, "Runtime": "nodejs24.x", "Architectures": ["arm64"], "Handler": "index.handler",
+        "Code": "../.aws-build/", "Role": { "Fn::GetAtt": ["FunctionRole", "Arn"] }, "MemorySize": 256, "Timeout": 15,
+        "Environment": { "Variables": { "NOTEBOOK_BUCKET": { "Ref": "NotebookBucket" }, "AUTH_SECRET_ARN": { "Ref": "LoginSecret" }, "PUBLIC_ORIGIN": { "Fn::If": ["HasDomain", { "Fn::Sub": "https://${DomainName}" }, ""] } } }
+      }
+    },
+    "ApplicationLogs": { "Type": "AWS::Logs::LogGroup", "Properties": { "LogGroupName": { "Fn::Sub": "/aws/lambda/${AWS::StackName}-app" }, "RetentionInDays": 7 } },
+    "FunctionUrl": { "Type": "AWS::Lambda::Url", "Properties": { "TargetFunctionArn": { "Ref": "Application" }, "AuthType": "NONE", "InvokeMode": "BUFFERED" } },
+    "UrlPermission": { "Type": "AWS::Lambda::Permission", "Properties": { "FunctionName": { "Ref": "Application" }, "Action": "lambda:InvokeFunctionUrl", "Principal": "*", "FunctionUrlAuthType": "NONE" } },
+    "InvokePermission": { "Type": "AWS::Lambda::Permission", "Properties": { "FunctionName": { "Ref": "Application" }, "Action": "lambda:InvokeFunction", "Principal": "*", "InvokedViaFunctionUrl": true } },
+    "OriginHeaders": {
+      "Type": "AWS::CloudFront::OriginRequestPolicy", "Condition": "HasDomain",
+      "Properties": { "OriginRequestPolicyConfig": { "Name": { "Fn::Sub": "${AWS::StackName}-viewer-headers" }, "HeadersConfig": { "HeaderBehavior": "allExcept", "Headers": ["host"] }, "CookiesConfig": { "CookieBehavior": "all" }, "QueryStringsConfig": { "QueryStringBehavior": "all" } } }
+    },
+    "NoCache": {
+      "Type": "AWS::CloudFront::CachePolicy", "Condition": "HasDomain",
+      "Properties": { "CachePolicyConfig": { "Name": { "Fn::Sub": "${AWS::StackName}-no-cache" }, "DefaultTTL": 0, "MaxTTL": 0, "MinTTL": 0,
+        "ParametersInCacheKeyAndForwardedToOrigin": { "EnableAcceptEncodingGzip": false, "CookiesConfig": { "CookieBehavior": "none" }, "HeadersConfig": { "HeaderBehavior": "none" }, "QueryStringsConfig": { "QueryStringBehavior": "none" } } } }
+    },
+    "Distribution": {
+      "Type": "AWS::CloudFront::Distribution", "Condition": "HasDomain",
+      "Properties": { "DistributionConfig": {
+        "Enabled": true, "Aliases": [{ "Ref": "DomainName" }], "PriceClass": "PriceClass_100", "HttpVersion": "http2", "IPV6Enabled": true,
+        "Origins": [{ "Id": "lambda", "DomainName": { "Fn::Select": [2, { "Fn::Split": ["/", { "Fn::GetAtt": ["FunctionUrl", "FunctionUrl"] }] }] }, "CustomOriginConfig": { "OriginProtocolPolicy": "https-only", "OriginSSLProtocols": ["TLSv1.2"] } }],
+        "DefaultCacheBehavior": { "TargetOriginId": "lambda", "ViewerProtocolPolicy": "redirect-to-https", "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"], "CachedMethods": ["GET", "HEAD"], "CachePolicyId": { "Ref": "NoCache" }, "OriginRequestPolicyId": { "Ref": "OriginHeaders" }, "Compress": true },
+        "ViewerCertificate": { "AcmCertificateArn": { "Ref": "CertificateArn" }, "SslSupportMethod": "sni-only", "MinimumProtocolVersion": "TLSv1.2_2021" }
+      } }
+    }
+  },
+  "Outputs": {
+    "ApplicationUrl": { "Value": { "Fn::If": ["HasDomain", { "Fn::Sub": "https://${DomainName}" }, { "Fn::GetAtt": ["FunctionUrl", "FunctionUrl"] }] } },
+    "LambdaUrl": { "Value": { "Fn::GetAtt": ["FunctionUrl", "FunctionUrl"] } },
+    "LoginSecretArn": { "Value": { "Ref": "LoginSecret" } },
+    "NotebookBucketName": { "Value": { "Ref": "NotebookBucket" } },
+    "DomainDnsTarget": { "Condition": "HasDomain", "Value": { "Fn::GetAtt": ["Distribution", "DomainName"] } }
+  }
+}
