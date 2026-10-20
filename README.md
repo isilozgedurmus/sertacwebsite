@@ -2,6 +2,12 @@
 
 Telefon ve tablet için Türkçe arayüzlü kişisel İngilizce kelime defteri. HTML, CSS ve JavaScript arayüzü; hesapla korunan Sites Worker ve D1 veritabanı.
 
+## GitHub Actions
+
+`.github/workflows/ci.yml`, `main` dalına gönderilen değişikliklerde, pull request'lerde ve elle başlatıldığında Node.js 24 ile kilitli bağımlılıkları kurar, uygulamayı derler ve regresyon testlerini çalıştırır. Başarılı derleme çıktısı yedi gün boyunca Actions artifact'i olarak saklanır. Resmî Actions eylemleri tam commit kimliğiyle sabitlenmiştir; iş akışının depo erişimi yalnız okumadır.
+
+Bu iş akışı mevcut Sites Worker çıktısını doğrular. Hostinger'a yayın adımı henüz bağlı değildir: uygulamanın D1 veritabanı ve Sites oturum kimliği Hostinger'da kendiliğinden bulunmaz. Hostinger paketinin çalışma ortamı ve sunucu erişimi doğrulanmadan yalnız `web/` dosyalarını yayımlamak cihazlar arası eşitlemeyi sağlamaz. Canlı yayında yerel önizlemenin sabit test kimliği kullanılmamalıdır.
+
 ## Yerel önizleme
 
 `npm install`, `npm run db:generate` (yalnız şema değiştiğinde), `npm run build` ve `node scripts/preview.mjs` çalıştır. Önizleme http://127.0.0.1:4174 adresinde açılır. Bu adres yalnız yerel test hesabını ve `.sites-runtime/preview.sqlite` dosyasını kullanır; üretim kayıtlarına erişmez.
