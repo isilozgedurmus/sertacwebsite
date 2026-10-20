@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Kelime isolated verification</title>
+<style>body{font:16px system-ui;max-width:800px;padding:35px;line-height:1.7}button{font:inherit;padding:12px;margin:8px}pre{white-space:pre-wrap}iframe{width:400px;height:650px;border:1px solid #eee}</style>
+<h1>Isolated verification</h1><p>This origin has its own browser storage. The user's notebook on port 4173 is unaffected.</p>
+<button id="dictionary">Check live dictionary</button><button id="handwriting">Check handwritten sample</button><button id="app">Open isolated app</button><pre id="result" role="status">Ready</pre>
+<script src="../web/data.js"></script><script src="../web/lookup.js"></script>
+<script>
+const output=document.getElementById('result');
+document.getElementById('dictionary').onclick=async()=>{output.textContent='Looking up generous…';try{const result=await KelimeLookup.lookup('generous',{refresh:true});output.textContent=JSON.stringify(result,null,2)}catch(e){output.textContent=e.stack}};
+document.getElementById('handwriting').onclick=()=>{output.textContent='Loading handwriting model…';const worker=new Worker('../web/handwriting-worker.js',{type:'module'});worker.onmessage=({data})=>{output.textContent=JSON.stringify(data,null,2);if(data.type==='result'||data.type==='error')worker.terminate()};worker.onerror=e=>{output.textContent='Worker error: '+e.message;worker.terminate()};worker.postMessage({id:'official-handwritten-sample',image:'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/handwriting.jpg'});};
+document.getElementById('app').onclick=()=>location.href='../web/';
+</script></html>

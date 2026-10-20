@@ -1,0 +1,15 @@
+{
+  "name": "kelime-private-notebook",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "db:generate": "drizzle-kit generate",
+    "test": "node tests/lookup.test.cjs && node tests/sync.test.cjs && node tests/worker.test.mjs && node tests/artifact.test.mjs"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.10",
+    "drizzle-orm": "0.45.2"
+  }
+}
